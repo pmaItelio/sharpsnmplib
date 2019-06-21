@@ -1,22 +1,43 @@
 \#SNMP Library
 =============
-[![Join the chat at https://gitter.im/sharpsnmplib](https://img.shields.io/gitter/room/sharpsnmplib/Lobby.svg?style=flat-square)](https://gitter.im/sharpsnmplib/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
-[![NuGet Version](https://img.shields.io/nuget/v/Lextm.SharpSnmpLib.svg?style=flat-square)](https://www.nuget.org/packages/Lextm.SharpSnmpLib/)
-[![Azure DevOps builds](https://img.shields.io/azure-devops/build/lextudio/08d27f27-71b2-4158-90ec-565c685b3c05/5.svg?style=flat-square)](https://dev.azure.com/lextudio/sharpsnmp/_build/)
+thanks lextudio/sharpsnmplib for a great lib
 
-This is the source code repository of #SNMP Library. Visual Studio 2019 and .NET Core SDK (for .NET Core 2.1 and above) is required to compile it on Windows.
+\#Give back
+I've found some issue with alot of async GetNext request and also a fix for it.
 
-Sample projects can be found in [their repo](https://github.com/lextudio/sharpsnmplib-samples).
+Issue:
+Usind .Net Framework massive requests wir result in some different Exceptions in more or less random situations:
+- System.EngineException
+- FatalExecutionEngineError (MDA)
+- NullrefExecption
+- InvalideArgumentException
+- InvalideOperationException
+and sometimes it simply locks.
+with debug it is better to reproduce but also failes (sometimes) in a release application.
 
-The following can be found at [#SNMP Library homepage](https://sharpsnmp.com),
+[code]
+        IPEndPoint endpoint = new IPEndPoint(IPAddress.Parse("192.168.100.12"), 161);
+        OctetString community = new OctetString("public");
 
-* News
-* Downloads and release notes
+        [TestMethod]
+        public async Task TestAsync()
+        {
+            for (int i = 0; i < 8000; i++)
+            {
+                (await GetNextAsync("1.3.6.1.2.1.2.2.1.2")).ToList();
+            }
+        }
 
-[The documentation site is here](https://docs.sharpsnmp.com).
+        private async Task<IEnumerable<Variable>> GetNextAsync(string oid)
+        {
+            var variables = new List<Variable> { new Variable(new ObjectIdentifier(oid)) };
+            var message = new GetNextRequestMessage(Messenger.NextMessageId, VersionCode.V2, community, variables);
+            var res = await message.GetResponseAsync(endpoint);
+            return res.Pdu().Variables;
+        }
+[/code]
 
-Issues can be created directly at GitHub.
+We could track the reason down to SocketAwaitable used in SnmpMessageExtension.cs:701
+as wie changed the implementation using UdpCliente we could not reproduce the issue and we consider it fixed.
 
-Questions should post to [StackOverflow.com](https://stackoverflow.com) with sharp-snmp tag.
-
-Priority support can be purchased separately from [LeXtudio Inc.](https://support.lextudio.com).
+see the changes in SnmpMessageExtension.cs:686
